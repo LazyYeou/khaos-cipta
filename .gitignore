@@ -1,0 +1,22 @@
+# Dataset (hanya daftar sumber yang di-commit)
+data/*
+!data/SOURCES.md
+
+# Checkpoint & log eksperimen (hanya catatan eksperimen yang di-commit)
+runs/*
+!runs/EXPERIMENTS.md
+*.pt
+*.pth
+*.safetensors
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Tooling
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/

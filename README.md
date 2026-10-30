@@ -49,11 +49,12 @@ batik-diffusion/
 │   ├── evaluate_fid.py       # hitung FID
 │   ├── interpolate.py        # interpolasi antar motif
 │   └── make_gif.py           # GIF reverse process
-├── tests/                    # unit test shape & schedule
+├── tests/                    # unit test shape, schedule, sampler, overfit
 ├── notebooks/
 │   └── colab_train.ipynb     # versi siap jalan di Google Colab
 ├── assets/                   # gambar & GIF untuk README
-├── runs/                     # checkpoint & log (tidak di-commit)
+├── runs/                     # checkpoint & log (tidak di-commit, kecuali EXPERIMENTS.md)
+├── pyproject.toml            # konfigurasi ruff & pytest
 ├── requirements.txt
 ├── AGENT.md
 └── README.md
@@ -93,17 +94,27 @@ cd batik-diffusion
 pip install -r requirements.txt
 ```
 
-### 2. Sanity check di CIFAR-10
+### 2. Smoke test & unit test
 
-Sebelum masuk ke batik, pastikan pipeline benar dengan CIFAR-10 (diunduh otomatis):
+Smoke test menjalankan seluruh pipeline (data → training 20 langkah → checkpoint → sampling) dengan model kecil dan data sintetis, < 2 menit di CPU, tanpa unduhan:
+
+```bash
+python scripts/train.py --config configs/cifar10.yaml --smoke-test
+pytest -q
+ruff check src scripts tests
+```
+
+### 3. Sanity check di CIFAR-10
+
+Sebelum masuk ke batik, pastikan pipeline benar dengan CIFAR-10 (diunduh otomatis ke `data/cifar10`):
 
 ```bash
 python scripts/train.py --config configs/cifar10.yaml
 ```
 
-### 3. Siapkan dataset batik
+### 4. Siapkan dataset batik
 
-Letakkan foto kain batik di `data/raw/`, lalu potong menjadi patch:
+Letakkan foto kain batik di `data/raw/` (catat sumber & lisensinya di `data/SOURCES.md`), lalu potong menjadi patch. Script ini tidak me-resize foto, jadi perkecil dulu foto beresolusi sangat tinggi agar satu patch 64×64 memuat motif yang utuh:
 
 ```bash
 python scripts/prepare_patches.py \
@@ -114,13 +125,31 @@ python scripts/prepare_patches.py \
   --min-std 0.05      # buang patch polos / tanpa motif
 ```
 
-### 4. Training
+### 5. Training
 
 ```bash
 python scripts/train.py --config configs/batik64.yaml
+
+# Lanjutkan setelah sesi terputus (memuat runs/batik64/last.pt)
+python scripts/train.py --config configs/batik64.yaml --resume
+
+# Override nilai config dari CLI
+python scripts/train.py --config configs/batik64.yaml --override train.lr=1e-4 diffusion.schedule=linear
 ```
 
-### 5. Generate motif baru
+Setiap run menyimpan ke `runs/<run_name>/`:
+
+| File | Isi |
+|---|---|
+| `config.yaml` | salinan config yang dipakai |
+| `log.csv` | step, loss, learning rate, waktu |
+| `samples/step_XXXXXX.png` | grid sampel berkala (bobot EMA, noise tetap) |
+| `last.pt` | model, EMA, optimizer, scheduler, step, config (untuk `--resume`) |
+| `ema_last.pt` | bobot EMA + config (untuk sampling) |
+
+Untuk Google Colab, pakai `notebooks/colab_train.ipynb` (checkpoint disimpan di Google Drive).
+
+### 6. Generate motif baru
 
 ```bash
 # DDPM (1000 langkah, kualitas maksimal)
@@ -130,12 +159,23 @@ python scripts/sample.py --ckpt runs/batik64/ema_last.pt --n 64 --sampler ddpm
 python scripts/sample.py --ckpt runs/batik64/ema_last.pt --n 64 --sampler ddim --steps 50
 ```
 
-### 6. Evaluasi & visualisasi
+Tanpa `--out`, grid disimpan ke `<folder checkpoint>/sample_<sampler>.png`. Opsi lain: `--eta` (DDIM), `--batch-size`, `--seed`.
+
+### 7. Evaluasi & visualisasi
 
 ```bash
+# FID terhadap data.root di config (CIFAR-10: statistik bawaan torch-fidelity)
 python scripts/evaluate_fid.py --ckpt runs/batik64/ema_last.pt --n 10000
-python scripts/make_gif.py --ckpt runs/batik64/ema_last.pt --out assets/reverse_process.gif
+
+# GIF reverse process, plus strip forward process dari satu patch asli
+python scripts/make_gif.py --ckpt runs/batik64/ema_last.pt --out assets/reverse_process.gif \
+  --forward-image data/patches/<patch>.png --forward-out assets/forward_process.png
+
+# Interpolasi slerp antar noise + DDIM deterministik → assets/interpolation.png
 python scripts/interpolate.py --ckpt runs/batik64/ema_last.pt --steps 10
+
+# Grid 64 motif
+python scripts/sample.py --ckpt runs/batik64/ema_last.pt --n 64 --out assets/samples_grid.png
 ```
 
 ---
@@ -152,10 +192,13 @@ python scripts/interpolate.py --ckpt runs/batik64/ema_last.pt --steps 10
 | Attention di resolusi | 16 × 16 |
 | ResBlock per level | 2 |
 | Dropout | 0.1 |
-| Optimizer | AdamW, lr 2e-4 |
+| Optimizer | AdamW, lr 2e-4, warm-up 5000 step |
 | Batch size | 64 |
-| EMA decay | 0.9999 |
+| Training steps | 200 000 |
+| Gradient clipping | 1.0 |
+| EMA decay | 0.9999 (dengan warm-up) |
 | Mixed precision | fp16 |
+| Sampler default | DDIM, 50 langkah, η = 0 |
 
 ---
 
@@ -172,7 +215,7 @@ python scripts/interpolate.py --ckpt runs/batik64/ema_last.pt --steps 10
 
 ## 📊 Hasil
 
-> Bagian ini diisi setelah eksperimen selesai.
+> Bagian ini diisi setelah eksperimen selesai (catatan mentah di `runs/EXPERIMENTS.md`).
 
 | Eksperimen | Schedule | Attention | Params | Steps | FID ↓ |
 |---|---|---|---|---|---|

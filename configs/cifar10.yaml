@@ -1,0 +1,64 @@
+# Sanity check pipeline di CIFAR-10 32×32 (arsitektur CIFAR-10 dari Ho et al. 2020).
+run_name: cifar10
+seed: 42
+
+data:
+  dataset: cifar10         # folder | cifar10 | synthetic
+  root: data/cifar10
+  image_size: 32
+  channels: 3
+  hflip: true
+  vflip: false
+  rot90: false
+  num_workers: 2
+
+diffusion:
+  timesteps: 1000
+  schedule: linear         # linear | cosine
+  beta_start: 1.0e-4
+  beta_end: 0.02
+  cosine_s: 0.008
+
+model:
+  base_channels: 128
+  channel_mult: [1, 2, 2, 2]
+  num_res_blocks: 2
+  attn_resolutions: [16]
+  dropout: 0.1
+  num_groups: 32
+
+train:
+  batch_size: 128
+  lr: 2.0e-4
+  weight_decay: 0.0
+  warmup_steps: 5000
+  total_steps: 100000
+  grad_clip: 1.0
+  ema_decay: 0.9999
+  amp: true
+  log_every: 100
+  sample_every: 5000
+  save_every: 5000
+  n_samples: 16
+  sample_seed: 0
+
+sample:
+  sampler: ddim
+  steps: 50
+  eta: 0.0
+
+# Override untuk --smoke-test: pipeline lengkap dalam < 2 menit di CPU.
+smoke_test:
+  run_name: cifar10_smoke
+  data: {dataset: synthetic, num_samples: 8, num_workers: 0}
+  diffusion: {timesteps: 50}
+  model: {base_channels: 32}
+  train:
+    batch_size: 4
+    warmup_steps: 5
+    total_steps: 20
+    amp: false
+    log_every: 5
+    sample_every: 20
+    save_every: 20
+    n_samples: 2

@@ -6,5 +6,6 @@ run_name: batik64_6gb
 
 train:
   batch_size: 16
-  save_every: 100          # checkpoint tiap 100 step (last.pt ~570 MB + ema_last.pt ~143 MB)
+  total_steps: 1000
+  save_every: 500          # checkpoint tiap 500 step (last.pt ~570 MB + ema_last.pt ~143 MB)
   sample_every: 1000

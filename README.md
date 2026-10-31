@@ -167,6 +167,15 @@ Setiap run menyimpan ke `runs/<run_name>/`:
 
 Untuk Google Colab, pakai `notebooks/colab_train.ipynb` (checkpoint disimpan di Google Drive).
 
+**GPU 6 GB (mis. RTX 4050 Laptop)** — config default dirancang untuk T4 16 GB. Pakai varian `_6gb`, yang mewarisi config dasar (`extends:`) dengan arsitektur sama, batch yang muat di VRAM, dan checkpoint tiap 100 step:
+
+```bash
+python scripts/train.py --config configs/cifar10_6gb.yaml   # batch 64, ~0,29 s/step
+python scripts/train.py --config configs/batik64_6gb.yaml   # batch 16, ~0,26 s/step
+```
+
+Checkpoint ditulis di thread latar, jadi penyimpanan yang sering tidak menahan training. Setiap penyimpanan menulis ~715 MB ke disk; naikkan `train.save_every` jika ingin mengurangi beban disk.
+
 ### 6. Generate motif baru
 
 ```bash

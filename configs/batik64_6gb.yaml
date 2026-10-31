@@ -1,0 +1,10 @@
+# Batik 64×64 untuk GPU laptop 6 GB (diukur di RTX 4050 Laptop). Arsitektur sama dengan batik64.yaml.
+# Batch 64 tidak muat. Batch 16 butuh ~2,9 GB dan berjalan ~0,26 s/step (~61 gambar/s);
+# batch 24 tidak lebih cepat (~62 gambar/s, 4,1 GB) dan batch 32 melambat ke ~0,86 s/step (5,2 GB).
+extends: batik64.yaml
+run_name: batik64_6gb
+
+train:
+  batch_size: 16
+  save_every: 100          # checkpoint tiap 100 step (last.pt ~570 MB + ema_last.pt ~143 MB)
+  sample_every: 1000

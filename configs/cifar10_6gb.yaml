@@ -1,0 +1,10 @@
+# CIFAR-10 untuk GPU laptop 6 GB (diukur di RTX 4050 Laptop). Arsitektur sama dengan cifar10.yaml.
+# Batch 128 butuh ~5,8 GB VRAM: driver meminjam RAM sistem dan training melambat ke ~2 s/step.
+# Batch 64 butuh ~3,2 GB dan berjalan ~0,29 s/step (~219 gambar/s, ~3,4× lebih cepat).
+extends: cifar10.yaml
+run_name: cifar10_6gb
+
+train:
+  batch_size: 64
+  save_every: 100          # checkpoint tiap 100 step (last.pt ~570 MB + ema_last.pt ~143 MB)
+  sample_every: 1000

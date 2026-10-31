@@ -18,7 +18,8 @@ Semua komponen inti — noise scheduler, U-Net, training loop, dan sampler — d
 - **Noise schedule** linear & cosine (bisa dipilih lewat config)
 - **EMA (Exponential Moving Average)** bobot model untuk sampling yang lebih bersih
 - **DDIM sampler** — sampling 50 langkah, ~20× lebih cepat dari DDPM 1000 langkah
-- **Pipeline dataset batik** — potong foto kain menjadi patch 64×64 dengan augmentasi
+- **Pipeline dataset batik** — konversi otomatis gambar ukuran apa pun ke 64×64 (resize atau patch) dengan augmentasi
+- **Web UI lokal** — upload gambar, konversi, training, dan generate dari browser
 - **Evaluasi FID** dan visualisasi forward/reverse process
 - **Interpolasi latent** antar motif (misalnya parang ↔ kawung)
 
@@ -43,7 +44,8 @@ batik-diffusion/
 │   ├── samplers.py           # DDPM & DDIM sampler
 │   └── utils.py              # seed, logging, save grid
 ├── scripts/
-│   ├── prepare_patches.py    # foto mentah → patch 64×64
+│   ├── prepare_patches.py    # gambar ukuran apa pun → 64×64 (resize / patch)
+│   ├── webui.py              # web UI lokal (+ webui.html)
 │   ├── train.py              # training loop
 │   ├── sample.py             # generate gambar baru
 │   ├── evaluate_fid.py       # hitung FID
@@ -114,7 +116,7 @@ python scripts/train.py --config configs/cifar10.yaml
 
 ### 4. Siapkan dataset batik
 
-Letakkan foto kain batik di `data/raw/` (catat sumber & lisensinya di `data/SOURCES.md`), lalu potong menjadi patch. Script ini tidak me-resize foto, jadi perkecil dulu foto beresolusi sangat tinggi agar satu patch 64×64 memuat motif yang utuh:
+Letakkan gambar batik berukuran apa pun di `data/raw/` (catat sumber & lisensinya di `data/SOURCES.md`), lalu ubah menjadi gambar 64×64:
 
 ```bash
 python scripts/prepare_patches.py \
@@ -122,8 +124,24 @@ python scripts/prepare_patches.py \
   --output data/patches \
   --size 64 \
   --stride 32 \
-  --min-std 0.05      # buang patch polos / tanpa motif
+  --min-std 0.05      # buang hasil polos / tanpa motif
 ```
+
+| `--mode` | Perilaku | Cocok untuk |
+|---|---|---|
+| `auto` (default) | sisi terpendek ≤ `--short-side` (default 256) → `resize`; lebih besar → diskalakan ke `--short-side` lalu `patch` | campuran |
+| `resize` | crop tengah menjadi persegi, lalu resize ke 64×64 (1 gambar per file) | gambar satu motif / ubin pola |
+| `patch` | skalakan sisi terpendek ke `--short-side` (`0` = tanpa skala), lalu potong sliding window | foto kain besar |
+
+### 🖥️ Web UI (opsional)
+
+Semua langkah di atas (upload gambar, konversi 64×64, training, generate) juga bisa dijalankan dari browser:
+
+```bash
+python scripts/webui.py          # buka http://127.0.0.1:7860
+```
+
+UI hanya memakai library standar Python, menjalankan script yang sama di belakang layar (satu job dalam satu waktu, dengan log langsung dan tombol berhenti), dan secara default hanya bisa diakses dari komputer sendiri.
 
 ### 5. Training
 

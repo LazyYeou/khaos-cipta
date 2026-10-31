@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Batik Diffusion</title>
+<style>
+  :root {
+    --bg: #f6f3ee; --panel: #fffdf9; --ink: #2a2420; --muted: #7a6f66; --line: #e4ddd3;
+    --accent: #8a4b22; --accent-ink: #fff; --danger: #b3261e; --ok: #2e7d32; --log: #1f1b18;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #171412; --panel: #211d1a; --ink: #ede6de; --muted: #a39788; --line: #3a332d;
+      --accent: #d08a52; --accent-ink: #1a120c; --danger: #ef7b72; --ok: #7cc47f; --log: #0f0d0c;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { padding: 20px 16px 8px; max-width: 1200px; margin: 0 auto; }
+  header h1 { margin: 0; font-size: 22px; }
+  header p { margin: 4px 0 0; color: var(--muted); }
+  main { max-width: 1200px; margin: 0 auto; padding: 8px 16px 32px;
+         display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr) minmax(0, 380px); }
+  @media (max-width: 900px) { main { grid-template-columns: minmax(0, 1fr); } }
+  .col { display: grid; gap: 16px; align-content: start; }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+  section h2 { margin: 0 0 12px; font-size: 16px; }
+  section h2 small { color: var(--muted); font-weight: normal; }
+  .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin-bottom: 12px; }
+  label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+  label.check { display: flex; align-items: center; gap: 6px; color: var(--ink); }
+  input, select { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line);
+                  border-radius: 6px; padding: 6px 8px; min-width: 0; }
+  input[type=number] { width: 100px; }
+  button { font: inherit; border: 0; border-radius: 6px; padding: 8px 14px; cursor: pointer;
+           background: var(--accent); color: var(--accent-ink); }
+  button.secondary { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+  button.danger { background: var(--danger); color: #fff; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .drop { border: 2px dashed var(--line); border-radius: 10px; padding: 24px; text-align: center;
+          color: var(--muted); cursor: pointer; }
+  .drop.over { border-color: var(--accent); color: var(--accent); }
+  .thumbs { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
+  .thumbs.small { grid-template-columns: repeat(auto-fill, minmax(48px, 1fr)); gap: 4px; }
+  .thumb { position: relative; border: 1px solid var(--line); border-radius: 6px; overflow: hidden;
+           background: var(--bg); }
+  .thumb img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; image-rendering: pixelated; }
+  .thumb span { display: block; font-size: 11px; padding: 2px 4px; white-space: nowrap;
+                overflow: hidden; text-overflow: ellipsis; }
+  .thumb button { position: absolute; top: 4px; right: 4px; padding: 0 6px; font-size: 12px;
+                  background: var(--danger); color: #fff; }
+  .result img { max-width: 100%; border-radius: 6px; border: 1px solid var(--line); image-rendering: pixelated; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .status { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }
+  .dot.run { background: var(--accent); animation: pulse 1s infinite alternate; }
+  .dot.ok { background: var(--ok); } .dot.err { background: var(--danger); }
+  @keyframes pulse { to { opacity: .3; } }
+  pre { background: var(--log); color: #e8e2da; border-radius: 6px; padding: 10px; margin: 0;
+        height: 320px; overflow: auto; font: 12px/1.45 ui-monospace, Consolas, monospace;
+        white-space: pre-wrap; word-break: break-all; }
+  .error { color: var(--danger); font-size: 13px; min-height: 1em; }
+  .runs { display: grid; gap: 12px; }
+  .run h3 { margin: 0 0 6px; font-size: 14px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Batik Diffusion</h1>
+  <p>Upload gambar batik → konversi ke 64×64 → training → generate motif baru.</p>
+</header>
+<main>
+  <div class="col">
+    <section>
+      <h2>1. Upload gambar batik <small id="raw-count"></small></h2>
+      <div class="drop" id="drop">Seret gambar ke sini atau klik untuk memilih (PNG, JPG, BMP, WEBP)
+        <input type="file" id="file" accept=".png,.jpg,.jpeg,.bmp,.webp" multiple hidden>
+      </div>
+      <p class="muted">Disimpan di <code>data/raw/</code>. Catat sumber &amp; lisensi di <code>data/SOURCES.md</code>.</p>
+      <div class="error" id="upload-error"></div>
+      <div class="thumbs" id="raw"></div>
+    </section>
+
+    <section>
+      <h2>2. Konversi ke 64×64 <small id="patch-count"></small></h2>
+      <div class="row">
+        <label>Mode
+          <select id="mode">
+            <option value="auto">auto — kecil di-resize, besar dipotong</option>
+            <option value="resize">resize — crop tengah, 1 gambar per file</option>
+            <option value="patch">patch — potong sliding window</option>
+          </select>
+        </label>
+        <label>Ukuran <input type="number" id="size" value="64" min="8"></label>
+        <label>Stride <input type="number" id="stride" value="32" min="1"></label>
+        <label>Min std <input type="number" id="min_std" value="0.05" step="0.01" min="0"></label>
+        <label>Sisi pendek <input type="number" id="short_side" value="256" min="0"></label>
+      </div>
+      <div class="row">
+        <label class="check"><input type="checkbox" id="clear" checked> Kosongkan <code>data/patches/</code> dulu</label>
+        <button id="convert">Konversi</button>
+      </div>
+      <p class="muted">Pratinjau maksimal 48 gambar pertama di <code>data/patches/</code>.</p>
+      <div class="thumbs small" id="patches"></div>
+    </section>
+
+    <section>
+      <h2>3. Training</h2>
+      <div class="row">
+        <label>Config <select id="config"></select></label>
+        <label>Total step <input type="number" id="total_steps" placeholder="dari config" min="1"></label>
+        <label>Sampel &amp; simpan tiap <input type="number" id="sample_every" placeholder="dari config" min="1"></label>
+      </div>
+      <div class="row">
+        <label class="check"><input type="checkbox" id="smoke"> Smoke test (cepat, data sintetis)</label>
+        <label class="check"><input type="checkbox" id="resume"> Lanjutkan (--resume)</label>
+        <button id="train">Mulai training</button>
+      </div>
+      <div class="runs" id="runs"></div>
+    </section>
+
+    <section>
+      <h2>4. Generate motif</h2>
+      <div class="row">
+        <label>Run <select id="run"></select></label>
+        <label>Sampler
+          <select id="sampler"><option value="ddim">DDIM (cepat)</option><option value="ddpm">DDPM (semua T langkah)</option></select>
+        </label>
+        <label>Langkah DDIM <input type="number" id="steps" value="50" min="1"></label>
+        <label>Jumlah <input type="number" id="n" value="16" min="1" max="256"></label>
+        <label>Seed <input type="number" id="seed" value="0"></label>
+        <button id="sample">Generate</button>
+      </div>
+      <div class="result" id="result"><p class="muted">Belum ada hasil.</p></div>
+    </section>
+  </div>
+
+  <div class="col">
+    <section>
+      <h2>Job</h2>
+      <div class="status"><span class="dot" id="dot"></span><span id="status">Tidak ada job</span></div>
+      <div class="error" id="job-error"></div>
+      <pre id="log"></pre>
+      <div class="row" style="margin: 12px 0 0"><button class="danger" id="stop" disabled>Hentikan</button></div>
+    </section>
+  </div>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const fileUrl = (p) => "/files/" + p.split("/").map(encodeURIComponent).join("/");
+let state = null;
+let stamp = Date.now();
+
+async function post(path, body) {
+  $("job-error").textContent = "";
+  const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify(body || {}) });
+  const data = await res.json();
+  if (!res.ok) { $("job-error").textContent = data.error || "Gagal"; return false; }
+  stamp = Date.now();
+  refresh();
+  return true;
+}
+
+async function upload(files) {
+  $("upload-error").textContent = "";
+  for (const f of files) {
+    const res = await fetch("/api/upload?name=" + encodeURIComponent(f.name), { method: "POST", body: f });
+    if (!res.ok) $("upload-error").textContent = f.name + ": " + (await res.json()).error;
+  }
+  stamp = Date.now();
+  refresh();
+}
+
+function thumb(url, caption, onDelete) {
+  const div = document.createElement("div");
+  div.className = "thumb";
+  const img = document.createElement("img");
+  img.src = fileUrl(url) + "?t=" + stamp; img.loading = "lazy"; img.alt = caption || "";
+  div.append(img);
+  if (caption) { const s = document.createElement("span"); s.textContent = caption; s.title = caption; div.append(s); }
+  if (onDelete) {
+    const b = document.createElement("button"); b.textContent = "×"; b.title = "Hapus"; b.onclick = onDelete;
+    div.append(b);
+  }
+  return div;
+}
+
+function fillSelect(sel, values, keep) {
+  const current = sel.value;
+  const key = values.join("|");
+  if (sel.dataset.key === key) return;
+  sel.dataset.key = key;
+  sel.replaceChildren(...values.map((v) => new Option(v, v)));
+  if (keep && values.includes(current)) sel.value = current;
+}
+
+function render(s) {
+  const key = JSON.stringify([s.raw, s.patch_count, s.runs, stamp]);
+  if (!state || state.renderKey !== key) {
+    $("raw-count").textContent = `(${s.raw.length} file)`;
+    $("raw").replaceChildren(...s.raw.map((r) => thumb(r.url, r.name, async () => {
+      if (confirm("Hapus " + r.name + " dari data/raw?")) await post("/api/delete-raw", { name: r.name });
+    })));
+    $("patch-count").textContent = `(${s.patch_count} gambar)`;
+    $("patches").replaceChildren(...s.patch_preview.map((p) => thumb(p)));
+
+    $("runs").replaceChildren(...s.runs.filter((r) => r.latest_sample).map((r) => {
+      const div = document.createElement("div"); div.className = "run result";
+      const h = document.createElement("h3"); h.textContent = `${r.name} — sampel terbaru (${r.latest_sample.split("/").pop()})`;
+      const img = document.createElement("img"); img.src = fileUrl(r.latest_sample) + "?t=" + stamp;
+      div.append(h, img); return div;
+    }));
+
+    const generated = s.runs.flatMap((r) => r.generated);
+    const sel = $("run").value;
+    const mine = s.runs.find((r) => r.name === sel);
+    const latest = mine && mine.generated.length ? mine.generated[mine.generated.length - 1] : generated[generated.length - 1];
+    if (latest) {
+      const img = document.createElement("img"); img.src = fileUrl(latest) + "?t=" + stamp;
+      const cap = document.createElement("p"); cap.className = "muted"; cap.textContent = latest;
+      $("result").replaceChildren(img, cap);
+    }
+  }
+  fillSelect($("config"), s.configs, true);
+  fillSelect($("run"), s.runs.filter((r) => r.checkpoint).map((r) => r.name), true);
+
+  const job = s.job;
+  const dot = $("dot");
+  dot.className = "dot" + (job.running ? " run" : job.returncode === 0 ? " ok" : job.returncode != null ? " err" : "");
+  $("status").textContent = job.running ? `Berjalan: ${job.kind}`
+    : job.kind ? `${job.kind} selesai (exit ${job.returncode})` : "Tidak ada job";
+  const log = $("log");
+  const atBottom = log.scrollTop + log.clientHeight >= log.scrollHeight - 8;
+  log.textContent = job.log.join("\n");
+  if (atBottom) log.scrollTop = log.scrollHeight;
+  for (const id of ["convert", "train", "sample"]) $(id).disabled = job.running;
+  $("sample").disabled = job.running || !$("run").value;
+  $("stop").disabled = !job.running;
+
+  if (state && state.job.running && !job.running) stamp = Date.now();  // muat ulang gambar setelah job selesai
+  state = { ...s, renderKey: key };
+}
+
+async function refresh() {
+  try { render(await (await fetch("/api/state")).json()); } catch (e) { $("status").textContent = "Server tidak terhubung"; }
+}
+
+const drop = $("drop");
+drop.onclick = () => $("file").click();
+$("file").onchange = (e) => upload(e.target.files);
+drop.ondragover = (e) => { e.preventDefault(); drop.classList.add("over"); };
+drop.ondragleave = () => drop.classList.remove("over");
+drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove("over"); upload(e.dataTransfer.files); };
+
+const num = (id) => $(id).value === "" ? null : Number($(id).value);
+$("convert").onclick = () => post("/api/convert", {
+  mode: $("mode").value, size: num("size"), stride: num("stride"), min_std: num("min_std"),
+  short_side: num("short_side"), clear: $("clear").checked });
+$("train").onclick = () => post("/api/train", {
+  config: $("config").value, smoke: $("smoke").checked, resume: $("resume").checked,
+  total_steps: num("total_steps"), sample_every: num("sample_every") });
+$("sample").onclick = () => post("/api/sample", {
+  run: $("run").value, sampler: $("sampler").value, steps: num("steps"), n: num("n"), seed: num("seed") });
+$("stop").onclick = () => post("/api/stop");
+$("run").onchange = () => { stamp = Date.now(); refresh(); };
+
+refresh();
+setInterval(refresh, 2000);
+</script>
+</body>
+</html>

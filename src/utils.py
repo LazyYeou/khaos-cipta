@@ -37,8 +37,13 @@ def get_device(name: str | None = None) -> torch.device:
 
 
 def load_config(path: str | Path) -> dict[str, Any]:
+    """Muat YAML. Kunci `extends: <file>.yaml` (relatif terhadap file ini) mewarisi config lain,
+    lalu nilai di file ini menimpanya."""
+    path = Path(path)
     with open(path, encoding="utf-8") as f:
-        return yaml.safe_load(f)
+        cfg = yaml.safe_load(f)
+    base = cfg.pop("extends", None)
+    return deep_merge(load_config(path.parent / base), cfg) if base else cfg
 
 
 def save_config(cfg: dict[str, Any], path: str | Path) -> None:

@@ -4,7 +4,17 @@ import pytest
 import torch
 from PIL import Image
 
-from src.utils import CSVLogger, apply_overrides, deep_merge, save_grid, to_uint8
+from src.utils import CSVLogger, apply_overrides, deep_merge, load_config, save_grid, to_uint8
+
+
+def test_load_config_extends_base(tmp_path: Path) -> None:
+    (tmp_path / "base.yaml").write_text("run_name: base\ntrain:\n  batch_size: 128\n  lr: 2.0e-4\n")
+    (tmp_path / "child.yaml").write_text("extends: base.yaml\ntrain:\n  batch_size: 64\n")
+
+    assert load_config(tmp_path / "child.yaml") == {
+        "run_name": "base",
+        "train": {"batch_size": 64, "lr": 2e-4},
+    }
 
 
 def test_deep_merge_does_not_mutate_base() -> None:

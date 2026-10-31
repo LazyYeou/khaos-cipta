@@ -23,6 +23,7 @@ from src.dataset import build_dataset  # noqa: E402
 from src.ema import EMA  # noqa: E402
 from src.samplers import sample  # noqa: E402
 from src.utils import (  # noqa: E402
+    AsyncCheckpointWriter,
     CSVLogger,
     apply_overrides,
     build_diffusion,
@@ -30,7 +31,6 @@ from src.utils import (  # noqa: E402
     deep_merge,
     get_device,
     load_config,
-    save_checkpoint,
     save_config,
     save_grid,
     set_seed,
@@ -128,6 +128,8 @@ def main() -> None:
     fixed_gen = torch.Generator(device).manual_seed(tcfg["sample_seed"])
     fixed_noise = torch.randn(shape, device=device, generator=fixed_gen)
 
+    # Checkpoint ditulis di thread latar agar penyimpanan yang sering tidak menahan training.
+    checkpoints = AsyncCheckpointWriter()
     batches = infinite_batches(loader)
     start_time = time.time()
     model.train()
@@ -173,11 +175,10 @@ def main() -> None:
                 "step": step,
                 "config": cfg,
             }
-            save_checkpoint(state, run_dir / "last.pt")
-            save_checkpoint(
-                {"ema": ema.state_dict(), "step": step, "config": cfg}, run_dir / "ema_last.pt"
-            )
+            ema_state = {"ema": state["ema"], "step": step, "config": cfg}
+            checkpoints.save({run_dir / "last.pt": state, run_dir / "ema_last.pt": ema_state})
 
+    checkpoints.wait()
     print(f"selesai: {step} step, checkpoint di {run_dir}")
 
 

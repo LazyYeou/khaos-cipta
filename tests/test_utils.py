@@ -4,7 +4,15 @@ import pytest
 import torch
 from PIL import Image
 
-from src.utils import CSVLogger, apply_overrides, deep_merge, load_config, save_grid, to_uint8
+from src.utils import (
+    AsyncCheckpointWriter,
+    CSVLogger,
+    apply_overrides,
+    deep_merge,
+    load_config,
+    save_grid,
+    to_uint8,
+)
 
 
 def test_load_config_extends_base(tmp_path: Path) -> None:
@@ -56,3 +64,24 @@ def test_csv_logger_appends_without_duplicate_header(tmp_path: Path) -> None:
     CSVLogger(path, ["step", "loss"]).log({"step": 2, "loss": 0.4})
 
     assert path.read_text().splitlines() == ["step,loss", "1,0.5", "2,0.4"]
+
+
+def test_async_writer_snapshots_state_before_returning(tmp_path: Path) -> None:
+    weights = torch.zeros(3)
+    writer = AsyncCheckpointWriter()
+    writer.save({tmp_path / "last.pt": {"w": weights, "step": 1}})
+    weights.add_(5.0)  # training melanjutkan update in-place sebelum file selesai ditulis
+    writer.wait()
+
+    saved = torch.load(tmp_path / "last.pt")
+    assert torch.equal(saved["w"], torch.zeros(3))
+    assert saved["step"] == 1
+    assert not (tmp_path / "last.pt.tmp").exists()
+
+
+def test_async_writer_reraises_write_errors(tmp_path: Path) -> None:
+    writer = AsyncCheckpointWriter()
+    writer.save({tmp_path / "tidak_ada" / "last.pt": {"step": 1}})
+    with pytest.raises(RuntimeError, match="gagal menyimpan checkpoint"):
+        writer.wait()
+    writer.wait()  # error hanya dilempar sekali

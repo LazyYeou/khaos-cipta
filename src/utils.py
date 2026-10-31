@@ -4,6 +4,7 @@ import copy
 import csv
 import os
 import random
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -177,6 +178,51 @@ def save_checkpoint(state: dict[str, Any], path: str | Path) -> None:
     tmp = path.with_suffix(path.suffix + ".tmp")
     torch.save(state, tmp)
     os.replace(tmp, path)
+
+
+def to_cpu_copy(obj: Any) -> Any:
+    """Salin semua tensor di dalam dict/list/tuple ke CPU (selalu salinan baru, juga di CPU)."""
+    if isinstance(obj, Tensor):
+        return obj.detach().to("cpu", copy=True)
+    if isinstance(obj, dict):
+        return {k: to_cpu_copy(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return type(obj)(to_cpu_copy(v) for v in obj)
+    return copy.deepcopy(obj)
+
+
+class AsyncCheckpointWriter:
+    """Menulis checkpoint di thread latar agar training tidak menunggu disk.
+
+    `save` menyalin state ke CPU (training lalu bebas mengubah bobot) dan menulis file di thread
+    terpisah. Paling banyak satu penulisan berjalan: `save` berikutnya menunggu yang sebelumnya
+    selesai. Error penulisan dilempar ulang pada `save` atau `wait` berikutnya.
+    """
+
+    def __init__(self) -> None:
+        self._thread: threading.Thread | None = None
+        self._error: BaseException | None = None
+
+    def save(self, files: dict[Path, dict[str, Any]]) -> None:
+        self.wait()
+        snapshot = {path: to_cpu_copy(state) for path, state in files.items()}
+        self._thread = threading.Thread(target=self._write, args=(snapshot,))
+        self._thread.start()
+
+    def _write(self, snapshot: dict[Path, dict[str, Any]]) -> None:
+        try:
+            for path, state in snapshot.items():
+                save_checkpoint(state, path)
+        except BaseException as e:  # dilempar ulang di thread utama lewat wait()
+            self._error = e
+
+    def wait(self) -> None:
+        if self._thread is not None:
+            self._thread.join()
+            self._thread = None
+        if self._error is not None:
+            error, self._error = self._error, None
+            raise RuntimeError("gagal menyimpan checkpoint") from error
 
 
 def load_model_for_sampling(
